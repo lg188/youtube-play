@@ -1,27 +1,52 @@
+from __future__ import unicode_literals
 import shlex
 import pipes
 import youtube_dl
 import subprocess
 
+logger = open("ytplay.log","w")
+
 def lookup(lookup_string):
-        """
-        A shitty youtube cli
-        """
-        opts = {
-            'format': 'mp3[abr>0]/bestaudio/best',
-            'prefer_ffmpeg': True,
-            'default_search': 'auto',
-            'quiet': True,
-        }
-        ydl = youtube_dl.YoutubeDL(opts)
-        # player.kill()
-        response = ydl.extract_info(url=lookup_string, download=False)
-        info = response['entries'][0]
-        derp = format_command(info['url'], info['http_headers'])
-        print("Playing: " + info['title'] )
-        #subprocess.call(derp)
-        player = subprocess.Popen(derp)
-        return player
+    """
+    Look up the string on youtube
+    """
+    opts = {
+        'extractaudio': True,
+        'audioformat': 'vorbis', 
+        'videoformat': 'none',
+        'prefer_ffmpeg': True,
+        'default_search': 'auto',
+        'quiet': True,
+        'outtmpl' : "ytplay",
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'vorbis',
+        }]
+    }
+    ydl = youtube_dl.YoutubeDL(opts)
+    response = ydl.extract_info(url=lookup_string, download=True)
+    return response['entries']
+
+
+def play(lookup_string, binary="ffplay"):
+    """
+    search for a song and play it
+    """
+    information = lookup(lookup_string)
+    logger.write(str(information))
+    for info in information:
+        try:
+            command = format_command(
+                info['requested_formats'][0]['url'],
+                info['requested_formats'][0]['http_headers'],
+                binary=binary)
+            print("Playing: " + info['title'])
+            break
+        except KeyError, e:
+            print("no right url found: " + str(e))
+
+    player = subprocess.Popen(command)
+    return player
 
 def format_command(url, headers, binary="ffplay"):
     """
@@ -29,16 +54,12 @@ def format_command(url, headers, binary="ffplay"):
 
     Keyword Arguments:
     -   binary the binary to use
+        choose between play or ffplay
     """
-
-    args = ""
-    before_args = ""
-    if isinstance(headers, dict):
-        for key, value in headers.items():
-            before_args += "{}: {}\n".format(key, value)
-        before_args = ' -headers ' + pipes.quote(before_args)
-
-    args = binary + ' {} -i {} -nodisp -loglevel panic'
-
-    args = args.format(before_args, url,)
-    return  shlex.split(args)
+    if binary == "ffplay":
+        args = '-i ytplay.ogg -nodisp -loglevel panic'
+    elif binary == "play":
+        args = "-q ytplay.ogg"
+    else:
+       raise Exception("Unsupported audio player: " + binary)
+    return  shlex.split(binary +  " " + args)
